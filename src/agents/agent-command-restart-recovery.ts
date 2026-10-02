@@ -223,19 +223,11 @@ export function buildRestartRecoveryTerminalDeliveryEvidence(
         rawDeliveryStatus.resultCount >= 0
           ? { resultCount: rawDeliveryStatus.resultCount }
           : {}),
-        ...(typeof (rawDeliveryStatus as { providerMessageId?: unknown })?.providerMessageId ===
-        "string"
-          ? {
-              providerMessageId: (rawDeliveryStatus as { providerMessageId: string })
-                .providerMessageId,
-            }
+        ...(typeof rawDeliveryStatus?.providerMessageId === "string"
+          ? { providerMessageId: rawDeliveryStatus.providerMessageId }
           : {}),
-        ...(typeof (rawDeliveryStatus as { providerTargetId?: unknown })?.providerTargetId ===
-        "string"
-          ? {
-              providerTargetId: (rawDeliveryStatus as { providerTargetId: string })
-                .providerTargetId,
-            }
+        ...(typeof rawDeliveryStatus?.providerTargetId === "string"
+          ? { providerTargetId: rawDeliveryStatus.providerTargetId }
           : {}),
         ...(errorMessage ? { errorMessage } : {}),
         ...(payloadOutcomes?.length ? { payloadOutcomes } : {}),
