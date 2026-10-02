@@ -129,6 +129,13 @@ async function resolveDiscordOutboundMessageSend(params: DiscordOutboundMessageC
 
 export const discordOutbound: ChannelOutboundAdapter = {
   deliveryMode: "direct",
+  readbackSentMessage: async ({ cfg, to, accountId, threadId, messageId, providerTargetId }) => {
+    const target = providerTargetId ?? resolveDiscordOutboundTarget({ to, threadId });
+    const channelId = target.replace(/^(channel|group):/, "");
+    const { fetchMessageDiscord } = await loadDiscordSendRuntime();
+    const message = await fetchMessageDiscord(channelId, messageId, { cfg, accountId });
+    return message.id === messageId;
+  },
   chunker: (text, limit, ctx) =>
     chunkDiscordTextWithMode(text, {
       maxChars: limit,

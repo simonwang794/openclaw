@@ -137,6 +137,7 @@ export function registerNativeCancellationCases<
     const requesterContext = expectDefined(
       createPluginSubagentRequesterContext({
         sessionKey: requester,
+        sessionId: "native-cancellation-requester-session",
         origin: { channel: "telegram", to: "telegram:native-cancellation" },
       }),
       "native cancellation requester",

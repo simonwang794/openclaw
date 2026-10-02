@@ -59,6 +59,23 @@ export type QueuedSessionDeliveryPayload =
       message: string;
       messageId: string;
       expectedSessionId?: string;
+      /** Persisted only after bounded exact-target readback, not send acceptance. */
+      targetVisibleAck?: {
+        sessionKey: string;
+        sessionId: string;
+        messageId: string;
+        observedAt: number;
+        source: "transcript" | "provider_readback";
+      };
+      providerReceipt?: {
+        channel: string;
+        to: string;
+        accountId?: string;
+        threadId?: string;
+        messageId: string;
+        providerTargetId?: string;
+      };
+      verification?: { readback: "unsupported" | "not_attempted" | "passed" | "failed" };
       route?: SessionDeliveryRoute;
       deliveryContext?: SessionDeliveryContext;
       inputProvenance?: InputProvenance;

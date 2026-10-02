@@ -106,6 +106,99 @@ describe("atomic subagent completion admission store", () => {
     return input;
   }
 
+  it.each([undefined, "wrong-session", "requester-session-id"] as const)(
+    "requires exact target-visible readback before settling a correlated return (%s)",
+    async (ackSessionId) => {
+      await useDefaultDatabase();
+      const input = records();
+      input.subagent.returnMetadata = {
+        origin: { sessionKey: input.task.requesterSessionKey, sessionId: "requester-session-id" },
+        originator: { status: "unknown" },
+        responsibleOwner: { agentId: "main" },
+        returnChannel: {
+          kind: "requester_session",
+          sessionKey: input.task.requesterSessionKey,
+          sessionId: "requester-session-id",
+        },
+        workId: input.subagent.runId,
+        scope: input.task.task,
+        authorizationBoundary: "requester_session_only",
+        acceptanceConditions: { status: "unknown" },
+        requiredEvidence: "exact_target_visible_readback",
+        completed: [],
+        remaining: ["result_delivery"],
+        unknown: ["originator", "acceptance_conditions"],
+        blocked: [],
+      };
+      if (ackSessionId) {
+        input.queueEntry.targetVisibleAck = {
+          sessionKey: input.task.requesterSessionKey,
+          sessionId: ackSessionId,
+          messageId: "observed-message",
+          observedAt: Date.now(),
+          source: "transcript",
+        };
+      }
+      persistOwner(input);
+      await settleCorrelatedSubagentDelivery(input.queueEntry, "recovered");
+      expect(getTaskById(input.task.taskId)?.deliveryStatus).toBe(
+        ackSessionId === "requester-session-id" ? "delivered" : "failed",
+      );
+    },
+  );
+
+  it.each([
+    { outcome: "recovered", readback: "passed", expectedStatus: "delivered" },
+    { outcome: "recovered", readback: "unsupported", expectedStatus: "failed" },
+    { outcome: "moved-to-failed", readback: "passed", expectedStatus: "failed" },
+  ] as const)(
+    "settles external provider return with $outcome and $readback readback",
+    async ({ outcome, readback, expectedStatus }) => {
+      await useDefaultDatabase();
+      const input = records();
+      input.subagent.returnMetadata = {
+        origin: {
+          sessionKey: input.task.requesterSessionKey,
+          sessionId: "requester-session-id",
+          route: { channel: "discord", to: "channel:requester", accountId: "primary" },
+        },
+        originator: { status: "unknown" },
+        responsibleOwner: { agentId: "main" },
+        returnChannel: {
+          kind: "requester_session",
+          sessionKey: input.task.requesterSessionKey,
+          sessionId: "requester-session-id",
+          route: { channel: "discord", to: "channel:requester", accountId: "primary" },
+        },
+        workId: input.subagent.runId,
+        scope: input.task.task,
+        authorizationBoundary: "requester_session_only",
+        acceptanceConditions: { status: "unknown" },
+        requiredEvidence: "provider_target_readback",
+        completed: [],
+        remaining: ["result_delivery"],
+        unknown: ["originator", "acceptance_conditions"],
+        blocked: [],
+      };
+      input.queueEntry.providerReceipt = {
+        channel: "discord",
+        to: "channel:requester",
+        accountId: "primary",
+        messageId: "provider-message-1",
+      };
+      input.queueEntry.verification = { readback };
+      persistOwner(input);
+      await settleCorrelatedSubagentDelivery(input.queueEntry, outcome);
+      expect(getTaskById(input.task.taskId)?.deliveryStatus).toBe(expectedStatus);
+      if (expectedStatus === "delivered") {
+        expect(subagentRuns.get(input.subagent.runId)?.delivery).toMatchObject({
+          providerReceipt: { messageId: "provider-message-1" },
+          verification: { readback: "passed" },
+        });
+      }
+    },
+  );
+
   function systemEvents() {
     return (
       database.db
@@ -648,6 +741,21 @@ describe("atomic subagent completion admission store", () => {
     );
   });
 
+  it.each([undefined, "replacement-session"])(
+    "blocks a correlated return without its birth requester session id: %s",
+    (expectedSessionId) => {
+      const { queueEntry, subagent } = records();
+      if (queueEntry.kind !== "agentTurn") {
+        throw new Error("expected queued agent turn");
+      }
+      queueEntry.expectedSessionId = expectedSessionId;
+      subagentRuns.set(subagent.runId, subagent);
+      expect(() => resolveCorrelatedSubagentDelivery(queueEntry)).toThrow(
+        SessionDeliveryDeadLetteredError,
+      );
+    },
+  );
+
   it("recovers canonical completion guidance after restart and clears payload after redrive success", async () => {
     await withEnvAsync({ OPENCLAW_STATE_DIR: tempDir }, async () => {
       closeOpenClawStateDatabaseForTest();
@@ -670,6 +778,7 @@ describe("atomic subagent completion admission store", () => {
       const payload = {
         kind: "agentTurn" as const,
         sessionKey: input.task.requesterSessionKey,
+        expectedSessionId: input.subagent.completionRequesterSessionId,
         message: "placeholder",
         messageId: "completion-owner-state",
         idempotencyKey: "completion-owner-state",
@@ -916,6 +1025,7 @@ describe("atomic subagent completion admission store", () => {
         id: "queue-proof",
         kind: "agentTurn",
         sessionKey: input.task.requesterSessionKey,
+        expectedSessionId: redriven.completionRequesterSessionId,
         message: "placeholder",
         messageId: "queue-proof",
         enqueuedAt: now,

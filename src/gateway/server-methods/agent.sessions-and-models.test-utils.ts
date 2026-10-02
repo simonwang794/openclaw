@@ -338,6 +338,7 @@ describe("gateway agent handler", () => {
       const childSessionKey = "agent:work:subagent:plugin-completion";
       const requester = {
         sessionKey: "agent:main:telegram:direct:123",
+        sessionId: "plugin-requester-birth-session",
         origin: {
           channel: "telegram",
           to: "telegram:123",
@@ -373,6 +374,27 @@ describe("gateway agent handler", () => {
         label: "plugin:memory-core",
       });
       expectRecordFields(run.completion, { required: true });
+      expectRecordFields(run.returnMetadata, {
+        origin: expect.objectContaining({ sessionId: requester.sessionId }),
+        returnChannel: expect.objectContaining({ sessionId: requester.sessionId }),
+      });
+    });
+  });
+
+  it("rejects a plugin completion requester without a birth session id", async () => {
+    await withPluginSubagentTestState("openclaw-gateway-plugin-subagent-unbound-", async () => {
+      await expect(
+        registerPluginSubagentRunFromGateway({
+          cfg: {},
+          runId: "plugin-subagent-unbound",
+          childSessionKey: "agent:work:subagent:unbound",
+          task: "must not return to a replacement session",
+          requester: {
+            sessionKey: "agent:main:main",
+            origin: { channel: "webchat", to: "agent:main:main" },
+          },
+        }),
+      ).rejects.toThrow("birth requester session id");
     });
   });
 
@@ -646,6 +668,7 @@ describe("gateway agent handler", () => {
         const runId = "plugin-subagent-own-requester";
         const followUpRequester = {
           sessionKey: "agent:main:telegram:direct:555",
+          sessionId: "follow-up-requester-birth-session",
           origin: { channel: "telegram", to: "telegram:555", accountId: "work" },
         } as const;
         const cfg = {
@@ -711,10 +734,12 @@ describe("gateway agent handler", () => {
         expect(response.mock.calls[0]?.[0], JSON.stringify(response.mock.calls[0])).toBe(true);
         await waitForAssertion(() => {
           expectRecordFields(context.dedupe.get(`agent:${runId}`)?.payload, { status: "ok" });
-          expect(announce).toHaveBeenCalledTimes(1);
-          expectRecordFields(getSubagentRunByChildSessionKey(childSessionKey)?.delivery, {
-            status: "delivered",
+          expect(announce).toHaveBeenCalled();
+          const boundRun = getSubagentRunByChildSessionKey(childSessionKey);
+          expectRecordFields(boundRun?.returnMetadata, {
+            origin: expect.objectContaining({ sessionId: followUpRequester.sessionId }),
           });
+          expect(boundRun?.delivery?.status).not.toBe("delivered");
         });
 
         // An explicit requester is a delivery opt-in. Adopting the paused row here
@@ -778,6 +803,7 @@ describe("gateway agent handler", () => {
           task: "deliver to me instead",
           requester: {
             sessionKey: "agent:main:telegram:direct:555",
+            sessionId: "plugin-sibling-birth-session",
             origin: { channel: "telegram", to: "telegram:555", accountId: "work" },
           },
           pluginId: "memory-core",

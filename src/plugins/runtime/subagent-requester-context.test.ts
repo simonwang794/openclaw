@@ -19,6 +19,7 @@ describe("plugin subagent requester context", () => {
   it("normalizes and freezes host-owned requester lineage", () => {
     const requester = createPluginSubagentRequesterContext({
       sessionKey: "  agent:main:telegram:direct:123  ",
+      sessionId: "  birth-session  ",
       origin: {
         channel: " Telegram ",
         to: " telegram:123 ",
@@ -29,6 +30,7 @@ describe("plugin subagent requester context", () => {
 
     expect(requester).toEqual({
       sessionKey: "agent:main:telegram:direct:123",
+      sessionId: "birth-session",
       origin: {
         channel: "telegram",
         to: "telegram:123",

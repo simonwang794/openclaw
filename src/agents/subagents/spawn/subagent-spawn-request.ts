@@ -147,10 +147,10 @@ export function resolveSubagentSpawnRequest(
       `sessions_spawn could not read the requester session: ${summarizeSpawnError(error)}`,
     );
   }
-  if (params.completionTarget === "parent" && !completionRequesterSessionId) {
+  if (params.expectsCompletionMessage !== false && !completionRequesterSessionId) {
     return rejectSubagentSpawnRequest(
       "error",
-      "Private completion requires an existing requester session. Retry from an active session.",
+      "Completion return requires an existing exact requester session. Retry from an active session.",
     );
   }
 

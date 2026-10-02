@@ -47,6 +47,26 @@ export type SubagentCompletionDeliveryState = {
   announcedAt?: number;
   /** Exact requester turn and completed child batch that already produced its visible final. */
   requesterVisibleFinal?: { requesterTurnRunId: string; batchRunIds: string[] };
+  /** Read back from the exact return target; a send/acceptance receipt is insufficient. */
+  targetVisibleAck?: {
+    sessionKey: string;
+    sessionId: string;
+    messageId: string;
+    observedAt: number;
+    source: "transcript" | "provider_readback";
+  };
+  /** Identified external platform acceptance, separate from independent readback. */
+  providerReceipt?: {
+    channel: string;
+    to: string;
+    accountId?: string;
+    threadId?: string;
+    messageId: string;
+    providerTargetId?: string;
+  };
+  verification?: {
+    readback: "unsupported" | "not_attempted" | "passed" | "failed";
+  };
   lastAttemptAt?: number;
   attemptCount?: number;
   lastError?: string | null;
@@ -82,6 +102,28 @@ export type SubagentCompletionDeliveryState = {
     | "message_tool_delivery_missing"
     | "dedupe"
     | "waiting_for_requester_turn";
+};
+
+/** Birth-bound return facts. Unknown provenance is explicit, never inferred from a route. */
+export type SubagentReturnMetadata = {
+  origin: { sessionKey: string; sessionId: string; route?: DeliveryContext };
+  originator: { status: "unknown" };
+  responsibleOwner: { agentId: string };
+  returnChannel: {
+    kind: "requester_session";
+    sessionKey: string;
+    sessionId: string;
+    route?: DeliveryContext;
+  };
+  workId: string;
+  scope: string;
+  authorizationBoundary: "requester_session_only";
+  acceptanceConditions: { status: "unknown" };
+  requiredEvidence: "exact_target_visible_readback" | "provider_target_readback";
+  completed: string[];
+  remaining: string[];
+  unknown: string[];
+  blocked: string[];
 };
 
 export type SwarmCollectorStatus = "done" | "failed" | "killed" | "timeout";

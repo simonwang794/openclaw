@@ -8,6 +8,7 @@ import {
 
 export type PluginSubagentRequesterContext = Readonly<{
   sessionKey: string;
+  sessionId?: string;
   origin: Readonly<DeliveryContext>;
 }>;
 
@@ -26,15 +27,18 @@ const pluginSubagentRequesterScope = resolveGlobalSingleton<
 
 export function createPluginSubagentRequesterContext(params: {
   sessionKey?: string;
+  sessionId?: string;
   origin?: DeliveryContext;
 }): PluginSubagentRequesterContext | undefined {
   const sessionKey = normalizeOptionalString(params.sessionKey);
+  const sessionId = normalizeOptionalString(params.sessionId);
   const origin = normalizeDeliveryContext(params.origin);
   if (!sessionKey || !origin?.channel || !origin.to) {
     return undefined;
   }
   return Object.freeze({
     sessionKey,
+    ...(sessionId ? { sessionId } : {}),
     origin: Object.freeze({ ...origin }),
   });
 }

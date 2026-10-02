@@ -183,6 +183,13 @@ it.each([
         { sessionId: "replacement-requester", updatedAt: Date.now() },
       );
       const result = await pending;
+      if (backend === "native" && !originalSessionId) {
+        expect(result).toMatchObject({
+          status: "error",
+          error: expect.stringContaining("exact requester session"),
+        });
+        return;
+      }
       expect(result).toMatchObject({ status: "accepted" });
       const runId = result?.runId;
       if (typeof runId !== "string") {

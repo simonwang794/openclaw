@@ -176,6 +176,15 @@ export async function deliverSubagentAnnouncement(params: {
     | { id: string; claimed: boolean; context: OpenClawStateWorkerContext }
     | undefined;
   if (durableGeneratedMediaHandoff) {
+    if (!params.completionRequesterSessionId?.trim()) {
+      return {
+        delivered: false,
+        path: "queued",
+        reason: "completion_handoff_unavailable",
+        error: "completion return has no exact requester session id",
+        disposition: "permanent_failure",
+      };
+    }
     try {
       const cfg = getSubagentAnnounceRuntimeConfig();
       const canonicalSessionKey = resolveRequesterStoreKey(
@@ -218,6 +227,7 @@ export async function deliverSubagentAnnouncement(params: {
       const queuePayload = {
         kind: "agentTurn",
         sessionKey: canonicalSessionKey,
+        expectedSessionId: params.completionRequesterSessionId,
         message: formatAgentInternalEventsForPrompt(params.internalEvents) || params.triggerMessage,
         messageId: `${params.directIdempotencyKey}:agent-loop`,
         route: queuedRoute.route,

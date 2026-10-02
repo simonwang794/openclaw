@@ -18,6 +18,8 @@ export type AgentDeliveryEvidence = {
   deliveryStatus?: {
     status?: unknown;
     resultCount?: unknown;
+    providerMessageId?: unknown;
+    providerTargetId?: unknown;
     errorMessage?: unknown;
     reason?: unknown;
     payloadOutcomes?: unknown;

@@ -1,4 +1,5 @@
 import type { GatewayContextResolver } from "../../../gateway/server-methods/types.js";
+import { isInternalMessageChannel } from "../../../utils/message-channel.js";
 import { normalizeSubagentRunState } from "./subagent-delivery-state.js";
 import type { SubagentRunRecord } from "./subagent-registry.types.js";
 
@@ -64,6 +65,37 @@ export function createSubagentRegistrationRecord(
   const spawnMode = registerParams.spawnMode === "session" ? "session" : "run";
   const runTimeoutSeconds = registerParams.runTimeoutSeconds ?? 0;
   const queued = registerParams.queued === true;
+  const requesterSessionId = registerParams.completionRequesterSessionId?.trim();
+  const returnMetadata =
+    registerParams.expectsCompletionMessage === true && requesterSessionId
+      ? {
+          origin: {
+            sessionKey: requesterSessionKey,
+            sessionId: requesterSessionId,
+            ...(requesterOrigin ? { route: requesterOrigin } : {}),
+          },
+          originator: { status: "unknown" as const },
+          responsibleOwner: { agentId: prepared.requesterAgentId ?? "unknown" },
+          returnChannel: {
+            kind: "requester_session" as const,
+            sessionKey: requesterSessionKey,
+            sessionId: requesterSessionId,
+            ...(requesterOrigin ? { route: requesterOrigin } : {}),
+          },
+          workId: runId,
+          scope: registerParams.task,
+          authorizationBoundary: "requester_session_only" as const,
+          acceptanceConditions: { status: "unknown" as const },
+          requiredEvidence:
+            requesterOrigin?.channel && !isInternalMessageChannel(requesterOrigin.channel)
+              ? ("provider_target_readback" as const)
+              : ("exact_target_visible_readback" as const),
+          completed: [],
+          remaining: ["result_delivery"],
+          unknown: ["originator", "acceptance_conditions"],
+          blocked: [],
+        }
+      : undefined;
   return normalizeSubagentRunState({
     runId,
     taskRunId: runId,
@@ -71,6 +103,7 @@ export function createSubagentRegistrationRecord(
     childSessionKey,
     controllerSessionKey,
     requesterSessionKey,
+    ...(returnMetadata ? { returnMetadata } : {}),
     requesterOrigin,
     progressOrigin: registerParams.progressOrigin,
     requesterDisplayKey: registerParams.requesterDisplayKey,

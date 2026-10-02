@@ -239,6 +239,10 @@ export async function registerPluginSubagentRunFromGateway(params: {
     agentId: resolveAgentIdFromSessionKey(childSessionKey),
   });
   const requesterSessionKey = params.requester?.sessionKey ?? ownerSessionKey;
+  const completionRequesterSessionId = params.requester?.sessionId?.trim();
+  if (params.requester && !completionRequesterSessionId) {
+    throw new Error("Plugin subagent completion requires the birth requester session id.");
+  }
   const { adoptPausedSubagentRunForFollowUp, registerSubagentRun } =
     await import("../../agents/subagents/registry/subagent-registry.js");
   // A follow-up aimed at a session paused by sessions_yield continues that run.
@@ -271,6 +275,7 @@ export async function registerPluginSubagentRunFromGateway(params: {
     cleanup: "keep",
     ...(params.pluginId ? { label: `plugin:${params.pluginId}` } : {}),
     expectsCompletionMessage: params.requester !== undefined,
+    ...(completionRequesterSessionId ? { completionRequesterSessionId } : {}),
     spawnMode: "run",
     ...(params.gatewayContextResolver
       ? { gatewayContextResolver: params.gatewayContextResolver }

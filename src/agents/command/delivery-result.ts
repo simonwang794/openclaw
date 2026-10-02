@@ -19,6 +19,9 @@ export type AgentCommandDeliveryStatus = {
   /** Free-form lowercase_snake reason from durable delivery or preflight validation. */
   reason?: string;
   resultCount?: number;
+  /** Platform result identity for correlated external return accounting. */
+  providerMessageId?: string;
+  providerTargetId?: string;
   sentBeforeError?: true;
   payloadOutcomes?: SerializedDurableMessagePayloadOutcome[];
 };

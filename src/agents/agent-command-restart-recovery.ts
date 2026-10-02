@@ -223,6 +223,20 @@ export function buildRestartRecoveryTerminalDeliveryEvidence(
         rawDeliveryStatus.resultCount >= 0
           ? { resultCount: rawDeliveryStatus.resultCount }
           : {}),
+        ...(typeof (rawDeliveryStatus as { providerMessageId?: unknown })?.providerMessageId ===
+        "string"
+          ? {
+              providerMessageId: (rawDeliveryStatus as { providerMessageId: string })
+                .providerMessageId,
+            }
+          : {}),
+        ...(typeof (rawDeliveryStatus as { providerTargetId?: unknown })?.providerTargetId ===
+        "string"
+          ? {
+              providerTargetId: (rawDeliveryStatus as { providerTargetId: string })
+                .providerTargetId,
+            }
+          : {}),
         ...(errorMessage ? { errorMessage } : {}),
         ...(payloadOutcomes?.length ? { payloadOutcomes } : {}),
       }

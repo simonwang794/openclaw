@@ -14,7 +14,9 @@ import {
   formatGeneratedMediaDeliveryRetryForPrompt,
 } from "../agents/internal-events.js";
 import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
+import { verifySubagentProviderReceipt } from "../agents/subagents/completion/subagent-provider-readback.js";
 import { resolveDurableCompletionDeliveryMode } from "../auto-reply/reply/completion-delivery-policy.js";
+import { getRuntimeConfig } from "../config/config.js";
 import {
   getRestartRecoveryTerminalDeliveryEvidence,
   hasRestartRecoveryTerminalRun,
@@ -460,6 +462,49 @@ export async function deliverQueuedGeneratedMediaAgentTurn(params: {
         ? { persistInternalMedia: (mediaUrls) => persistInternalMedia(mediaUrls, transcriptRunId) }
         : {}),
     });
+    if (entry.owner?.kind === "subagent_completion" && route.channel === INTERNAL_MESSAGE_CHANNEL) {
+      const sessionId = params.sessionEntry?.sessionId?.trim();
+      if (sessionId && sessionId === entry.expectedSessionId && transcriptRunId) {
+        const { readExactSessionReturnAck } =
+          await import("../agents/subagents/completion/subagent-return-readback.js");
+        entry.targetVisibleAck = await readExactSessionReturnAck({
+          scope: {
+            agentId: params.agentId,
+            sessionKey: params.canonicalKey,
+            sessionId,
+            storePath: params.storePath,
+          },
+          expectedSessionKey: entry.sessionKey,
+          expectedSessionId: entry.expectedSessionId ?? "",
+          runId: transcriptRunId,
+        });
+      }
+    } else if (
+      entry.owner?.kind === "subagent_completion" &&
+      result.deliveryStatus?.status === "sent"
+    ) {
+      const messageId = result.deliveryStatus.providerMessageId;
+      if (
+        typeof messageId === "string" &&
+        messageId.trim() &&
+        !["ok", "unknown", "skipped", "suppressed"].includes(messageId.trim().toLowerCase())
+      ) {
+        entry.providerReceipt = {
+          channel: route.channel,
+          to: route.to,
+          ...(route.accountId ? { accountId: route.accountId } : {}),
+          ...(route.threadId ? { threadId: route.threadId } : {}),
+          messageId,
+          ...(typeof result.deliveryStatus.providerTargetId === "string"
+            ? { providerTargetId: result.deliveryStatus.providerTargetId }
+            : {}),
+        };
+        entry.verification = await verifySubagentProviderReceipt({
+          cfg: getRuntimeConfig(),
+          receipt: entry.providerReceipt,
+        });
+      }
+    }
     return true;
   };
   const terminalEvidence = getRestartRecoveryTerminalDeliveryEvidence(
@@ -517,6 +562,9 @@ export async function deliverQueuedGeneratedMediaAgentTurn(params: {
         accountId: route.accountId,
         to: route.to,
         threadId: route.threadId,
+        ...(entry.owner?.kind === "subagent_completion" && entry.expectedSessionId
+          ? { expectedExistingSessionId: entry.expectedSessionId }
+          : {}),
         ...(cronSessionId ? { sessionId: cronSessionId } : {}),
         inputProvenance: entry.inputProvenance,
         sourceReplyDeliveryMode,

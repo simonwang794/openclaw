@@ -29,6 +29,7 @@ import {
 import { hasVisibleCompletionResult } from "../../internal-event-contract.js";
 import type { AgentInternalEvent } from "../../internal-events.js";
 import { createAgentRunDirectAbortError } from "../../run-termination.js";
+import { verifySubagentProviderReceipt } from "../completion/subagent-provider-readback.js";
 import {
   SourceOwnerChangedError,
   sourceOwnerChangedResult,
@@ -346,14 +347,42 @@ export async function deliverCompletionDirect(params: {
           throw new SourceOwnerChangedError();
         }
       },
-      onDeliveryResult: () => {
+      onDeliveryResult: async (result) => {
         if (committedDelivery) {
+          return;
+        }
+        const messageId = result.messageId?.trim();
+        if (
+          !messageId ||
+          ["ok", "unknown", "skipped", "suppressed"].includes(messageId.toLowerCase())
+        ) {
           return;
         }
         // Platform identity is committed before transcript mirroring, which
         // may wait behind the requester's still-active SQLite writer.
-        committedDelivery = { delivered: true, path: "direct", deliveredAt: Date.now() };
-        params.onDeliveryResult?.(committedDelivery);
+        const confirmedDelivery: SubagentAnnounceDeliveryResult = {
+          delivered: true,
+          path: "direct",
+          deliveredAt: Date.now(),
+          providerReceipt: {
+            channel: result.channel,
+            to: params.deliveryTarget.to!,
+            ...(params.deliveryTarget.accountId
+              ? { accountId: params.deliveryTarget.accountId }
+              : {}),
+            ...(params.deliveryTarget.threadId != null
+              ? { threadId: String(params.deliveryTarget.threadId) }
+              : {}),
+            messageId,
+            ...(result.target?.id ? { providerTargetId: result.target.id } : {}),
+          },
+        };
+        committedDelivery = confirmedDelivery;
+        confirmedDelivery.verification = await verifySubagentProviderReceipt({
+          cfg: params.cfg,
+          receipt: confirmedDelivery.providerReceipt!,
+        });
+        params.onDeliveryResult?.(confirmedDelivery);
       },
       mirror: {
         sessionKey: params.requesterSessionKey,
@@ -378,7 +407,46 @@ export async function deliverCompletionDirect(params: {
           : { disposition: "intentional_non_delivery" as const, terminal: true }),
       };
     }
-    return { delivered: true, path: "direct" };
+    if (sendResult.deliveryStatus === "failed" || sendResult.deliveryStatus === "partial_failed") {
+      return {
+        delivered: false,
+        path: "direct",
+        error: sendResult.error ?? "provider send failed",
+      };
+    }
+    const messageId = sendResult.result?.messageId?.trim();
+    if (
+      messageId &&
+      !["ok", "unknown", "skipped", "suppressed"].includes(messageId.toLowerCase())
+    ) {
+      const providerReceipt = {
+        channel: sendResult.channel,
+        to: params.deliveryTarget.to!,
+        ...(params.deliveryTarget.accountId ? { accountId: params.deliveryTarget.accountId } : {}),
+        ...(params.deliveryTarget.threadId != null
+          ? { threadId: String(params.deliveryTarget.threadId) }
+          : {}),
+        messageId,
+        ...(sendResult.result && "target" in sendResult.result && sendResult.result.target?.id
+          ? { providerTargetId: sendResult.result.target.id }
+          : {}),
+      };
+      return {
+        delivered: true,
+        path: "direct",
+        providerReceipt,
+        verification: await verifySubagentProviderReceipt({
+          cfg: params.cfg,
+          receipt: providerReceipt,
+        }),
+      };
+    }
+    return {
+      delivered: false,
+      path: "direct",
+      error: "provider send returned no locatable message ID",
+      disposition: "ambiguous",
+    };
   } catch (err) {
     if (committedDelivery) {
       // Post-send bookkeeping must never turn an identified delivery into a

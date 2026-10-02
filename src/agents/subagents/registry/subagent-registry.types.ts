@@ -9,6 +9,7 @@ import type { SubagentLifecycleEndedReason } from "./subagent-lifecycle-events.j
 import type {
   SubagentRunReadRecord,
   SubagentCompletionDeliveryState,
+  SubagentReturnMetadata,
 } from "./subagent-registry-read.types.js";
 
 export type SubagentCompletionRequest = {
@@ -149,6 +150,7 @@ type SubagentKillIntent = {
 
 /** Persisted execution, completion, delivery, and attachment state for child runs. */
 export type SubagentRunRecord = Omit<SubagentRunReadRecord, "execution" | "collectorCompletion"> & {
+  returnMetadata?: SubagentReturnMetadata;
   /** Exact requester attempt for cancellation, independent of completion messaging. */
   requesterTurnRunId?: string;
   /** Durable proof that this requester attempt invoked sessions_yield. */

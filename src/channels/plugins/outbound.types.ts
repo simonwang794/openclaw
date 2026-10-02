@@ -175,6 +175,15 @@ type ChannelOutboundNormalizePayloadBatchParams = {
 
 export type ChannelOutboundAdapter = {
   deliveryMode: "direct" | "gateway" | "hybrid";
+  /** Optional independent exact-message readback after an identified send. */
+  readbackSentMessage?: (params: {
+    cfg: OpenClawConfig;
+    to: string;
+    accountId?: string;
+    threadId?: string;
+    messageId: string;
+    providerTargetId?: string;
+  }) => Promise<boolean>;
   chunker?: ((text: string, limit: number, ctx?: ChannelOutboundChunkContext) => string[]) | null;
   chunkerMode?: "text" | "markdown";
   chunkedTextFormatting?: OutboundDeliveryFormattingOptions;

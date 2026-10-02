@@ -40,6 +40,7 @@ export function records() {
     taskRunId: task.runId,
     childSessionKey: task.childSessionKey,
     requesterSessionKey: task.requesterSessionKey,
+    completionRequesterSessionId: "requester-session-id",
     requesterDisplayKey: task.requesterSessionKey,
     requesterAgentId: "main",
     requesterOrigin: { channel: "discord", to: "channel:requester", accountId: "primary" },
@@ -62,6 +63,7 @@ export function records() {
     {
       kind: "agentTurn",
       sessionKey: task.requesterSessionKey,
+      expectedSessionId: "requester-session-id",
       message: "canonical result is loaded at delivery time",
       messageId: "completion:1",
       idempotencyKey: "completion:1",

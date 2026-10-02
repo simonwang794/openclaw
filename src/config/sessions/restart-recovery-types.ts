@@ -31,6 +31,8 @@ export type RestartRecoveryTerminalDeliveryEvidenceResult = {
   deliveryStatus?: {
     status: "failed" | "partial_failed" | "sent" | "suppressed";
     resultCount?: number;
+    providerMessageId?: string;
+    providerTargetId?: string;
     errorMessage?: string;
     payloadOutcomes?: Array<{
       index: number;

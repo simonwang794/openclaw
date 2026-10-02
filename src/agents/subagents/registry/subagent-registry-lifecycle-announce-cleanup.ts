@@ -6,6 +6,7 @@ import {
   ensureCompletionState,
   ensureDeliveryState,
   getDeliveryLastError,
+  hasConfirmedSubagentReturnDelivery,
   isDeliverySuspended,
 } from "./subagent-delivery-state.js";
 import { SUBAGENT_ENDED_REASON_COMPLETE } from "./subagent-lifecycle-events.js";
@@ -246,6 +247,19 @@ const finalizeSubagentCleanup = async (
   }
   if (announceOutcome === "delivered" || announceOutcome === "intentional_non_delivery") {
     const delivery = ensureDeliveryState(entry);
+    if (
+      announceOutcome === "delivered" &&
+      entry.returnMetadata &&
+      !hasConfirmedSubagentReturnDelivery(entry)
+    ) {
+      suspendPendingFinalDelivery(context, {
+        runId,
+        entry,
+        reason: "permanent_failure",
+        error: "exact return target has no target-visible readback ACK",
+      });
+      return;
+    }
     const terminalNonDelivery =
       announceOutcome === "intentional_non_delivery" && delivery.status === "failed";
     const shouldCreditDelivery = announceOutcome === "delivered";
@@ -649,6 +663,24 @@ export const startSubagentAnnounceCleanupFlow = (
       // A late failure cannot rearm an announcement transferred to the batch.
       // Committed sends still retain their delivery evidence.
       if (!delivery.delivered && requesterTookCompletion()) {
+        return;
+      }
+      if (delivery.providerReceipt) {
+        const state = ensureDeliveryState(entry);
+        state.providerReceipt = delivery.providerReceipt;
+        state.verification = delivery.verification ?? { readback: "not_attempted" };
+      }
+      if (
+        delivery.delivered &&
+        entry.returnMetadata &&
+        !hasConfirmedSubagentReturnDelivery(entry)
+      ) {
+        suspendPendingFinalDelivery(context, {
+          runId,
+          entry,
+          reason: "permanent_failure",
+          error: "exact return target has no target-visible readback ACK",
+        });
         return;
       }
       recordAnnounceDeliveryResult(entry, delivery, params.runs);

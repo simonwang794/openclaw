@@ -38,6 +38,7 @@ import type { SubagentAnnounceDeliveryResult } from "../announce/subagent-announ
 import {
   ensureCompletionState,
   ensureDeliveryState,
+  hasConfirmedSubagentReturnDelivery,
   isCompletedRequesterDeliveryBlocked,
 } from "../registry/subagent-delivery-state.js";
 import { SUBAGENT_ENDED_REASON_KILLED } from "../registry/subagent-lifecycle-events.js";
@@ -587,9 +588,12 @@ export function settleRequesterCompletionBatch(params: {
         }
         // Decoding restores restart defaults, not the active process's cleanup ownership.
         subagent.cleanupHandled = expected.cleanupHandled;
+        const verifiedDelivery =
+          params.outcome.delivered &&
+          (!subagent.returnMetadata || hasConfirmedSubagentReturnDelivery(subagent));
         // An exact requester receipt can arrive after expiry transferred this result to its wake.
         const acknowledgeExpiredDelivery =
-          params.outcome.delivered &&
+          verifiedDelivery &&
           subagent.delivery?.status === "suspended" &&
           subagent.delivery.suspendedReason === "expiry";
         let mutation: CompletionMutation = { subagent };
@@ -599,7 +603,7 @@ export function settleRequesterCompletionBatch(params: {
           (["pending", "in_progress"].includes(subagent.delivery?.status ?? "pending") ||
             acknowledgeExpiredDelivery)
         ) {
-          if (params.outcome.delivered) {
+          if (verifiedDelivery) {
             const task = readTaskRecord(database.db, taskId ?? "");
             if (
               !task ||
@@ -638,11 +642,17 @@ export function settleRequesterCompletionBatch(params: {
               {
                 subagent: expected,
                 taskId: taskId ?? "",
-                reason:
-                  params.outcome.error ?? params.outcome.reason ?? "requester settle wake failed",
+                reason: params.outcome.delivered
+                  ? "exact return target has no target-visible readback ACK"
+                  : (params.outcome.error ??
+                    params.outcome.reason ??
+                    "requester settle wake failed"),
                 disposition: params.outcome.disposition,
                 storeReplaced: params.outcome.storeReplaced,
-                suspendedReason: params.outcome.storeReplaced ? "permanent_failure" : undefined,
+                suspendedReason:
+                  params.outcome.delivered || params.outcome.storeReplaced
+                    ? "permanent_failure"
+                    : undefined,
               },
               now,
               subagent,

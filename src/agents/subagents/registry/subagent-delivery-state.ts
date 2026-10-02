@@ -1,3 +1,4 @@
+import { isInternalMessageChannel } from "../../../utils/message-channel.js";
 import { normalizeAgentRunTerminalReplySnapshot } from "../../agent-run-terminal-reply.js";
 import type {
   SubagentCompletionDeliveryState,
@@ -192,6 +193,89 @@ export function ensureDeliveryState(entry: SubagentRunRecord): SubagentCompletio
     status: entry.expectsCompletionMessage === false ? "not_required" : "pending",
   };
   return entry.delivery;
+}
+
+export type SubagentReturnLifecycle =
+  | "RUNNING"
+  | "RESULT_READY"
+  | "RETURNING"
+  | "DELIVERED"
+  | "RETURN_BLOCKED"
+  | "CLOSED";
+
+/** A transport send or Gateway acceptance is never an exact-target readback. */
+export function hasExactSubagentReturnAck(entry: SubagentRunRecord): boolean {
+  const metadata = entry.returnMetadata;
+  const ack = entry.delivery?.targetVisibleAck;
+  return Boolean(
+    metadata &&
+    ack &&
+    metadata.origin.sessionKey === entry.requesterSessionKey &&
+    metadata.origin.sessionId === entry.completionRequesterSessionId &&
+    metadata.returnChannel.sessionKey === entry.requesterSessionKey &&
+    metadata.returnChannel.sessionId === entry.completionRequesterSessionId &&
+    ack.sessionKey === metadata.returnChannel.sessionKey &&
+    ack.sessionId === metadata.returnChannel.sessionId &&
+    ack.messageId.trim(),
+  );
+}
+
+/** External delivery needs a birth-bound receipt and independent provider readback. */
+export function hasConfirmedSubagentReturnDelivery(entry: SubagentRunRecord): boolean {
+  const metadata = entry.returnMetadata;
+  if (
+    !metadata ||
+    metadata.origin.sessionKey !== entry.requesterSessionKey ||
+    metadata.origin.sessionId !== entry.completionRequesterSessionId ||
+    metadata.returnChannel.sessionKey !== entry.requesterSessionKey ||
+    metadata.returnChannel.sessionId !== entry.completionRequesterSessionId
+  ) {
+    return false;
+  }
+  const route = metadata.returnChannel.route;
+  if (!route?.channel || isInternalMessageChannel(route.channel)) {
+    return hasExactSubagentReturnAck(entry);
+  }
+  const receipt = entry.delivery?.providerReceipt;
+  return Boolean(
+    receipt &&
+    route.to &&
+    receipt.channel === route.channel &&
+    receipt.to === route.to &&
+    receipt.accountId === route.accountId &&
+    String(receipt.threadId ?? "") === String(route.threadId ?? "") &&
+    receipt.messageId.trim() &&
+    !["ok", "unknown", "skipped", "suppressed"].includes(receipt.messageId.trim().toLowerCase()) &&
+    entry.delivery?.verification?.readback === "passed",
+  );
+}
+
+/** Project the return lifecycle from the existing execution/delivery owners. */
+export function resolveSubagentReturnLifecycle(entry: SubagentRunRecord): SubagentReturnLifecycle {
+  if (entry.execution.status !== "terminal") {
+    return "RUNNING";
+  }
+  if (entry.expectsCompletionMessage !== true) {
+    return entry.cleanupCompletedAt === undefined ? "RESULT_READY" : "CLOSED";
+  }
+  const metadata = entry.returnMetadata;
+  const delivery = entry.delivery;
+  if (!metadata || !delivery) {
+    return "RETURN_BLOCKED";
+  }
+  if (delivery.status === "in_progress") {
+    return "RETURNING";
+  }
+  if (delivery.status === "pending") {
+    return "RESULT_READY";
+  }
+  if (delivery.status !== "delivered") {
+    return "RETURN_BLOCKED";
+  }
+  if (!hasConfirmedSubagentReturnDelivery(entry)) {
+    return "RETURN_BLOCKED";
+  }
+  return entry.cleanupCompletedAt === undefined ? "DELIVERED" : "CLOSED";
 }
 
 /** Resets delivery state to its initial status for the run's completion requirement. */

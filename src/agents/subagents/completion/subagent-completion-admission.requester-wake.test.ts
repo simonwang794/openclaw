@@ -88,6 +88,41 @@ describe("persisted subagent requester wakes", () => {
     ensureTaskRegistryReady();
   }
 
+  it("does not credit a birth-bound requester wake without exact-target readback", () => {
+    const input = armRequesterWake(records());
+    input.subagent.returnMetadata = {
+      origin: { sessionKey: input.subagent.requesterSessionKey, sessionId: "requester-session-id" },
+      originator: { status: "unknown" },
+      responsibleOwner: { agentId: "main" },
+      returnChannel: {
+        kind: "requester_session",
+        sessionKey: input.subagent.requesterSessionKey,
+        sessionId: "requester-session-id",
+      },
+      workId: input.subagent.runId,
+      scope: input.task.task,
+      authorizationBoundary: "requester_session_only",
+      acceptanceConditions: { status: "unknown" },
+      requiredEvidence: "exact_target_visible_readback",
+      completed: [],
+      remaining: ["result_delivery"],
+      unknown: ["originator", "acceptance_conditions"],
+      blocked: [],
+    };
+    persistOwner(input);
+    settleRequesterCompletionBatch({
+      entries: [{ subagent: input.subagent, taskId: input.task.taskId }],
+      outcome: { delivered: true, path: "direct" },
+      isCurrent: () => true,
+      databaseOptions: { database },
+    });
+    expect(input.subagent.delivery).toMatchObject({
+      status: "suspended",
+      lastError: "exact return target has no target-visible readback ACK",
+    });
+    expect(getTaskById(input.task.taskId)?.deliveryStatus).toBe("failed");
+  });
+
   it.each([true, false])(
     "keeps active cleanup unless requester delivery is blocked (delivered=%s)",
     (delivered) => {

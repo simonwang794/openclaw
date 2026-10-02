@@ -33,6 +33,15 @@ type SubagentAnnounceSteerOutcome =
 export type SubagentAnnounceDeliveryResult = {
   delivered: boolean;
   path: SubagentDeliveryPath;
+  providerReceipt?: {
+    channel: string;
+    to: string;
+    accountId?: string;
+    threadId?: string;
+    messageId: string;
+    providerTargetId?: string;
+  };
+  verification?: { readback: "unsupported" | "not_attempted" | "passed" | "failed" };
   deliveredAt?: number;
   enqueuedAt?: number;
   /** Direct delivery that already committed the requester's visible final. */

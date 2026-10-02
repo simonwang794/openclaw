@@ -572,6 +572,7 @@ export async function chooseDispatchRoute(state: PrepareDispatchOperationReadySt
     const beforeDispatchSessionKey = sessionStoreEntry.sessionKey ?? sessionKey;
     const pluginSubagentRequester = createPluginSubagentRequesterContext({
       sessionKey: beforeDispatchSessionKey,
+      sessionId: sessionStoreEntry.entry?.sessionId,
       origin: {
         channel: routeReplyChannel,
         to: routeReplyTo,

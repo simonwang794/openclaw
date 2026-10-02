@@ -163,6 +163,12 @@ function deliveryStatusFromDurableSend(send: DurableSendResult): AgentCommandDel
         status: "sent",
         succeeded: true,
         resultCount: send.results.length,
+        ...(send.results.at(-1)?.messageId
+          ? { providerMessageId: send.results.at(-1)!.messageId }
+          : {}),
+        ...(send.results.at(-1)?.target?.id
+          ? { providerTargetId: send.results.at(-1)!.target!.id }
+          : {}),
         ...(payloadOutcomes ? { payloadOutcomes } : {}),
       };
     case "suppressed":

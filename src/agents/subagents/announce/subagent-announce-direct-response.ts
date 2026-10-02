@@ -1,5 +1,6 @@
 /** Interprets direct announcement responses and the existing text-fallback receipt. */
 import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
+import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import {
   INTERNAL_MESSAGE_CHANNEL,
   normalizeMessageChannel,
@@ -15,6 +16,7 @@ import {
   hasIntentionalSilentAgentPayload,
   hasVisibleAgentPayload,
 } from "../../embedded-agent-runner/message-visibility.js";
+import { verifySubagentProviderReceipt } from "../completion/subagent-provider-readback.js";
 import {
   buildRequesterCompletionDeliveryResult,
   hasMessagingToolDeliveryToSource,
@@ -25,6 +27,7 @@ import type { SubagentAnnounceDeliveryResult } from "./subagent-announce-dispatc
 import type { DeliveryContext } from "./subagent-announce-origin.js";
 
 type DirectAnnounceResponseContext = {
+  cfg: OpenClawConfig;
   params: {
     sourceTool?: string;
     expectsCompletionMessage: boolean;
@@ -50,6 +53,7 @@ type DirectAnnounceResponseContext = {
 /** Reuses prepared facts; only the existing text-delivery owner may perform a send. */
 export function createDirectAnnounceResponseClassifier(context: DirectAnnounceResponseContext) {
   const {
+    cfg,
     params,
     parentOnly,
     deliveryTarget,
@@ -278,10 +282,39 @@ export function createDirectAnnounceResponseClassifier(context: DirectAnnounceRe
             directAnnounceRecord?.status === "ok" &&
             hasVisibleNonSilentGatewayPayload &&
             hasVisibleCompletionReply));
-      return buildRequesterCompletionDeliveryResult(
+      const completionDelivery = buildRequesterCompletionDeliveryResult(
         requesterVisibleFinalCommitted,
         directAnnounceResult?.meta?.finalAssistantVisibleText,
       );
+      const providerMessageId = directAnnounceResult?.deliveryStatus?.providerMessageId;
+      const route = effectiveDirectOrigin ?? requesterSessionOrigin;
+      if (
+        directAnnounceResult?.deliveryStatus?.status === "sent" &&
+        typeof providerMessageId === "string" &&
+        providerMessageId.trim() &&
+        !["ok", "unknown", "skipped", "suppressed"].includes(
+          providerMessageId.trim().toLowerCase(),
+        ) &&
+        route?.channel &&
+        normalizeMessageChannel(route.channel) !== INTERNAL_MESSAGE_CHANNEL &&
+        route.to
+      ) {
+        completionDelivery.providerReceipt = {
+          channel: route.channel,
+          to: route.to,
+          ...(route.accountId ? { accountId: route.accountId } : {}),
+          ...(route.threadId != null ? { threadId: String(route.threadId) } : {}),
+          messageId: providerMessageId,
+          ...(typeof directAnnounceResult.deliveryStatus.providerTargetId === "string"
+            ? { providerTargetId: directAnnounceResult.deliveryStatus.providerTargetId }
+            : {}),
+        };
+        return verifySubagentProviderReceipt({
+          cfg,
+          receipt: completionDelivery.providerReceipt,
+        }).then((verification) => ({ ...completionDelivery, verification }));
+      }
+      return completionDelivery;
     };
 
     if (

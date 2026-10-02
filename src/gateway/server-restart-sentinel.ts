@@ -203,6 +203,13 @@ export async function deliverQueuedSessionDelivery(params: {
   }
 
   if (sessionChanged || !queuedEntry.route) {
+    if (queuedEntry.owner?.kind === "subagent_completion") {
+      throw new SessionDeliveryDeadLetteredError(
+        sessionChanged
+          ? "correlated subagent requester session was replaced"
+          : "correlated subagent return channel is unavailable",
+      );
+    }
     enqueueRestartSentinelWake(queuedEntry.message, canonicalKey, agentId, deliveryContext);
     return;
   }
@@ -221,6 +228,12 @@ export async function deliverQueuedSessionDelivery(params: {
         : {}),
     })
   ) {
+    // Correlated resolution prepares a derived turn; settlement persists the original queue owner.
+    if (queuedEntry.owner?.kind === "subagent_completion" && params.entry.kind === "agentTurn") {
+      params.entry.targetVisibleAck = queuedEntry.targetVisibleAck;
+      params.entry.providerReceipt = queuedEntry.providerReceipt;
+      params.entry.verification = queuedEntry.verification;
+    }
     return;
   }
   if (queuedEntry.deliveryStartedAt !== undefined) {

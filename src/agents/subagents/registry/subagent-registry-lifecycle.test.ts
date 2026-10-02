@@ -3833,6 +3833,41 @@ describe("subagent registry lifecycle hardening", () => {
     });
   });
 
+  it("keeps a birth-bound return blocked when direct send lacks exact-target readback", async () => {
+    const entry = createRunEntry({
+      expectsCompletionMessage: true,
+      completionRequesterSessionId: "birth-session",
+      returnMetadata: {
+        origin: { sessionKey: "agent:main:main", sessionId: "birth-session" },
+        originator: { status: "unknown" },
+        responsibleOwner: { agentId: "main" },
+        returnChannel: {
+          kind: "requester_session",
+          sessionKey: "agent:main:main",
+          sessionId: "birth-session",
+        },
+        workId: "run-1",
+        scope: "finish the task",
+        authorizationBoundary: "requester_session_only",
+        acceptanceConditions: { status: "unknown" },
+        requiredEvidence: "exact_target_visible_readback",
+        completed: [],
+        remaining: ["result_delivery"],
+        unknown: ["originator", "acceptance_conditions"],
+        blocked: [],
+      },
+    });
+    const controller = createLifecycleController({
+      entry,
+      runSubagentAnnounceFlow: vi.fn(async () => "delivered" as const),
+    });
+
+    await completeRun(controller, entry, { triggerCleanup: true });
+    await waitForLifecycleState(() => expect(entry.delivery?.status).toBe("suspended"));
+    expect(entry.delivery?.lastError).toContain("target-visible readback ACK");
+    expect(entry.cleanupCompletedAt).toBeUndefined();
+  });
+
   it("persists collector completion and skips announce delivery", async () => {
     const persist = vi.fn();
     const entry = createRunEntry({

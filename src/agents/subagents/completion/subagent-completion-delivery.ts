@@ -15,7 +15,10 @@ import { captureOpenClawStateWorkerContext } from "../../../state/openclaw-state
 import { findTaskByRunId, getTaskById } from "../../../tasks/runtime-internal.js";
 import type { TaskRecord } from "../../../tasks/task-registry.types.js";
 import type { RuntimeContextFragment } from "../../internal-runtime-context.js";
-import { ensureDeliveryState } from "../registry/subagent-delivery-state.js";
+import {
+  ensureDeliveryState,
+  hasConfirmedSubagentReturnDelivery,
+} from "../registry/subagent-delivery-state.js";
 import {
   ANNOUNCE_COMPLETION_HARD_EXPIRY_MS,
   safeRemoveAttachmentsDir,
@@ -81,6 +84,18 @@ export function admitCorrelatedSubagentSessionDelivery(params: {
   const current = subagentRuns.get(params.runId);
   if (!current) {
     throw new Error(`subagent completion owner not found: ${params.runId}`);
+  }
+  if (
+    !current.completionRequesterSessionId ||
+    params.payload.sessionKey !== current.requesterSessionKey ||
+    params.payload.expectedSessionId !== current.completionRequesterSessionId ||
+    (current.returnMetadata !== undefined &&
+      (current.returnMetadata.origin.sessionKey !== current.requesterSessionKey ||
+        current.returnMetadata.origin.sessionId !== current.completionRequesterSessionId ||
+        current.returnMetadata.returnChannel.sessionKey !== params.payload.sessionKey ||
+        current.returnMetadata.returnChannel.sessionId !== params.payload.expectedSessionId))
+  ) {
+    throw new Error("subagent completion return does not match its exact requester session");
   }
   const task = findTaskByRunId(current.taskRunId ?? current.runId);
   if (!task || task.runtime !== "subagent") {
@@ -152,6 +167,15 @@ export function resolveCorrelatedSubagentDelivery(
   ) {
     throw new SessionDeliveryDeferredError("correlated subagent delivery owner mismatch");
   }
+  if (
+    !entry.completionRequesterSessionId ||
+    queued.sessionKey !== entry.requesterSessionKey ||
+    queued.expectedSessionId !== entry.completionRequesterSessionId
+  ) {
+    throw new SessionDeliveryDeadLetteredError(
+      "correlated subagent delivery lost its exact requester session",
+    );
+  }
   const result = resolveSubagentCompletionResultText(entry) ?? "(no output)";
   return {
     ...queued,
@@ -183,12 +207,28 @@ export async function settleCorrelatedSubagentDelivery(
   const now = Date.now();
   const subagent = structuredClone(current);
   const delivery = ensureDeliveryState(subagent);
+  if (queued.kind === "agentTurn" && queued.targetVisibleAck) {
+    delivery.targetVisibleAck = queued.targetVisibleAck;
+  }
+  if (queued.kind === "agentTurn" && queued.providerReceipt) {
+    delivery.providerReceipt = queued.providerReceipt;
+    delivery.verification = queued.verification ?? { readback: "not_attempted" };
+  }
   const projectedTask = { ...task };
   if (outcome !== "recovered") {
     blockSubagentCompletionDelivery({
       subagent: current,
       taskId: queued.owner.taskId,
       reason: queued.lastError ?? "completion delivery failed",
+      suspendedReason: "permanent_failure",
+    });
+    return;
+  }
+  if (subagent.returnMetadata && !hasConfirmedSubagentReturnDelivery(subagent)) {
+    blockSubagentCompletionDelivery({
+      subagent: current,
+      taskId: queued.owner.taskId,
+      reason: "exact return target has no target-visible readback ACK",
       suspendedReason: "permanent_failure",
     });
     return;

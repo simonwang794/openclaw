@@ -4,6 +4,7 @@ import { asOptionalRecord } from "@openclaw/normalization-core/record-coerce";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSolidPngBuffer } from "../../test/helpers/image-fixtures.js";
 import type { RuntimeContextFragment } from "../agents/internal-runtime-context.js";
+import { createSubagentRunRecord } from "../agents/subagent-test-fixtures.test-helpers.js";
 import type { ChannelPlugin } from "../channels/plugins/types.plugin.js";
 import { buildRestartRecoveryClaimCleanupPatch } from "../config/sessions/restart-recovery-state.js";
 import {
@@ -550,6 +551,7 @@ const {
   scheduleRestartSentinelWake,
   settleQueuedSessionDelivery,
 } = await import("./server-restart-sentinel.js");
+const { subagentRuns } = await import("../agents/subagents/registry/subagent-registry-memory.js");
 const { resetGatewayWorkAdmission } = await import("../process/gateway-work-admission.js");
 const actualRestartUpdateRun = await vi.importActual<
   typeof import("./server-restart-update-run.js")
@@ -1747,6 +1749,145 @@ describe("scheduleRestartSentinelWake", () => {
       expect.objectContaining({ id: "session-delivery-media", kind: "agentTurn" }),
       expectQueueContext("/tmp/custom-session-delivery-state"),
     );
+  });
+
+  it("does not reroute a correlated child result to a replacement session", async () => {
+    const runId = "correlated-return-replaced-session";
+    const queueId = "correlated-return-queue";
+    const deadlineAt = Date.now() + 60_000;
+    subagentRuns.set(
+      runId,
+      createSubagentRunRecord({
+        runId,
+        completionRequesterSessionId: "birth-session",
+        delivery: { status: "in_progress", queueId, generation: 1, deadlineAt },
+      }),
+    );
+    const current = mocks.loadSessionEntry.getMockImplementation()!("agent:main:main");
+    mocks.loadSessionEntry.mockReturnValueOnce({
+      ...current,
+      entry: { ...current.entry, sessionId: "replacement-session" },
+    });
+    try {
+      await expect(
+        deliverGeneratedMedia({
+          id: queueId,
+          messageId: "correlated-return-message",
+          expectedSessionId: "birth-session",
+          owner: { kind: "subagent_completion", runId, taskId: "task", generation: 1, deadlineAt },
+        }),
+      ).rejects.toThrow("correlated subagent requester session was replaced");
+      expect(mocks.enqueueSystemEvent).not.toHaveBeenCalled();
+      expect(mocks.dispatchGatewayMethodInProcess).not.toHaveBeenCalled();
+    } finally {
+      subagentRuns.delete(runId);
+    }
+  });
+
+  it("fences a correlated child result at Gateway admission with its birth session id", async () => {
+    const runId = "correlated-return-birth-session";
+    const queueId = "correlated-return-birth-queue";
+    const deadlineAt = Date.now() + 60_000;
+    subagentRuns.set(
+      runId,
+      createSubagentRunRecord({
+        runId,
+        completionRequesterSessionId: "birth-session",
+        delivery: { status: "in_progress", queueId, generation: 1, deadlineAt },
+      }),
+    );
+    const current = mocks.loadSessionEntry.getMockImplementation()!("agent:main:main");
+    mocks.loadSessionEntry.mockReturnValueOnce({
+      ...current,
+      entry: { ...current.entry, sessionId: "birth-session" },
+    });
+    try {
+      await deliverGeneratedMedia({
+        id: queueId,
+        messageId: "correlated-birth-message",
+        expectedSessionId: "birth-session",
+        owner: { kind: "subagent_completion", runId, taskId: "task", generation: 1, deadlineAt },
+      });
+      expect(mocks.dispatchGatewayMethodInProcess).toHaveBeenCalledWith(
+        "agent",
+        expect.objectContaining({
+          sessionKey: "agent:main:main",
+          expectedExistingSessionId: "birth-session",
+        }),
+        expect.any(Object),
+      );
+    } finally {
+      subagentRuns.delete(runId);
+    }
+  });
+
+  it("reads a correlated internal return ACK from the exact birth-session transcript", async () => {
+    const sessionKey = "agent:main:main";
+    const sessionId = "birth-session";
+    const messageId = "correlated-internal-return";
+    const storePath = testState.statePath("agents", "main", "sessions", "sessions.json");
+    const loadSession = mocks.loadSessionEntry.getMockImplementation()!;
+    mocks.loadSessionEntry.mockImplementation((key) => ({
+      ...loadSession(key),
+      entry: { sessionId, updatedAt: 1 },
+      storePath,
+    }));
+    await upsertSessionEntryCore(
+      { agentId: "main", sessionKey, storePath },
+      { sessionId, updatedAt: 1 },
+    );
+    await appendTranscriptMessage(
+      { agentId: "main", sessionKey, sessionId, storePath },
+      {
+        eventId: "exact-visible-final",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Return complete" }],
+          stopReason: "stop",
+          __openclaw: { runId: messageId },
+        },
+      },
+    );
+    mocks.dispatchGatewayMethodInProcess.mockResolvedValueOnce({
+      status: "ok",
+      result: { payloads: [{ text: "Return complete" }], deliveryStatus: { status: "sent" } },
+    });
+    const runId = "correlated-internal-run";
+    const queueId = "correlated-internal-queue";
+    const deadlineAt = Date.now() + 60_000;
+    const entry = createGeneratedMediaDeliveryEntry({
+      id: queueId,
+      messageId,
+      expectedSessionId: sessionId,
+      route: { channel: "webchat", to: sessionKey, chatType: "direct" },
+      owner: {
+        kind: "subagent_completion",
+        runId,
+        taskId: "correlated-internal-task",
+        generation: 1,
+        deadlineAt,
+      },
+    });
+    subagentRuns.set(
+      runId,
+      createSubagentRunRecord({
+        runId,
+        requesterSessionKey: sessionKey,
+        completionRequesterSessionId: sessionId,
+        delivery: { status: "in_progress", queueId, generation: 1, deadlineAt },
+      }),
+    );
+    try {
+      await deliverQueuedSessionDelivery({ deps: {} as never, queueContext, entry });
+      expect(entry.targetVisibleAck).toMatchObject({
+        sessionKey,
+        sessionId,
+        messageId: "exact-visible-final",
+        source: "transcript",
+      });
+    } finally {
+      subagentRuns.delete(runId);
+    }
   });
 
   it("fences an adopted generic turn in its explicit queue state directory", async () => {

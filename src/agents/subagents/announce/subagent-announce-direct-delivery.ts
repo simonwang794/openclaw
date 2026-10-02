@@ -194,7 +194,7 @@ export async function sendSubagentAnnounceDirectly(params: {
       params.requesterAgentId,
     );
     if (
-      parentOnly &&
+      params.expectsCompletionMessage &&
       (!params.completionRequesterSessionId ||
         requesterActivity.sessionId !== params.completionRequesterSessionId)
     ) {
@@ -202,7 +202,7 @@ export async function sendSubagentAnnounceDirectly(params: {
         delivered: false,
         path: "none",
         reason: "completion_handoff_unavailable",
-        error: "private completion requester session is unavailable or replaced",
+        error: "completion requester session is unavailable or replaced",
         terminal: true,
         disposition: "intentional_non_delivery",
       };
@@ -366,7 +366,9 @@ export async function sendSubagentAnnounceDirectly(params: {
     // A private completion gets its own serialized turn. Steering into a public
     // turn would inherit that turn's delivery policy and expose child output.
     const directAgentParams: Record<string, unknown> = {
-      ...(parentOnly ? { expectedExistingSessionId: params.completionRequesterSessionId } : {}),
+      ...(params.expectsCompletionMessage
+        ? { expectedExistingSessionId: params.completionRequesterSessionId }
+        : {}),
       sessionKey: canonicalRequesterSessionKey,
       timeout: params.requesterRunTimeoutSeconds,
       message: params.triggerMessage,
@@ -389,6 +391,7 @@ export async function sendSubagentAnnounceDirectly(params: {
       idempotencyKey: params.directIdempotencyKey,
     };
     const classifyResponse = createDirectAnnounceResponseClassifier({
+      cfg,
       params,
       parentOnly,
       deliveryTarget,
