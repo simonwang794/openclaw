@@ -1766,7 +1766,11 @@ describe("scheduleRestartSentinelWake", () => {
     const current = mocks.loadSessionEntry.getMockImplementation()!("agent:main:main");
     mocks.loadSessionEntry.mockReturnValueOnce({
       ...current,
-      entry: { ...current.entry, sessionId: "replacement-session" },
+      entry: {
+        ...current.entry,
+        sessionId: "replacement-session",
+        updatedAt: current.entry?.updatedAt ?? 0,
+      },
     });
     try {
       await expect(
@@ -1799,7 +1803,11 @@ describe("scheduleRestartSentinelWake", () => {
     const current = mocks.loadSessionEntry.getMockImplementation()!("agent:main:main");
     mocks.loadSessionEntry.mockReturnValueOnce({
       ...current,
-      entry: { ...current.entry, sessionId: "birth-session" },
+      entry: {
+        ...current.entry,
+        sessionId: "birth-session",
+        updatedAt: current.entry?.updatedAt ?? 0,
+      },
     });
     try {
       await deliverGeneratedMedia({
