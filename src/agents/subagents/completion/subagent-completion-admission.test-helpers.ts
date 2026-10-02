@@ -78,6 +78,9 @@ export function records() {
     125_000,
     now,
   );
+  if (queueEntry.kind !== "agentTurn") {
+    throw new Error("subagent completion fixture requires an agent turn");
+  }
   subagent.delivery!.queueId = queueEntry.id;
   return { queueEntry, subagent, task };
 }
