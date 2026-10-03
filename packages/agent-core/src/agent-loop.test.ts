@@ -1498,10 +1498,12 @@ describe("agentLoop tool termination", () => {
         () => {},
         undefined,
         createTurnSequenceStream(
-          [[
-            { type: "toolCall", id: "first-call", name: "first", arguments: {} },
-            { type: "toolCall", id: "cleanup-call", name: "cleanup", arguments: {} },
-          ]],
+          [
+            [
+              { type: "toolCall", id: "first-call", name: "first", arguments: {} },
+              { type: "toolCall", id: "cleanup-call", name: "cleanup", arguments: {} },
+            ],
+          ],
           [],
         ),
       ),
