@@ -1493,12 +1493,15 @@ describe("agentLoop tool termination", () => {
     await expect(
       runAgentLoop(
         [{ role: "user", content: "start", timestamp: 1 }],
-        { systemPrompt: "", messages: [], tools: [tool] },
+        { systemPrompt: "", messages: [], tools: [makeTool("first", []), tool] },
         { ...config, toolExecution: "sequential", getSteeringMessages },
         () => {},
         undefined,
         createTurnSequenceStream(
-          [[{ type: "toolCall", id: "cleanup-call", name: "cleanup", arguments: {} }]],
+          [[
+            { type: "toolCall", id: "first-call", name: "first", arguments: {} },
+            { type: "toolCall", id: "cleanup-call", name: "cleanup", arguments: {} },
+          ]],
           [],
         ),
       ),
