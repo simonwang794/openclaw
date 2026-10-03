@@ -623,6 +623,26 @@ describe("gateway sessions patch", () => {
     expect(read.agentStatus).toBeUndefined();
   });
 
+  test("marks a session read without changing its recency", async () => {
+    const read = expectPatchOk(
+      await runPatch({
+        store: mainStoreEntry({ markedUnreadAt: 40 }),
+        patch: { key: MAIN_SESSION_KEY, unread: false, expectedMarkedUnreadAt: 40 },
+      }),
+    );
+    expect(read.updatedAt).toBe(1);
+    expect(read.lastReadAt).toEqual(expect.any(Number));
+    expect(read.markedUnreadAt).toBeUndefined();
+
+    const mixed = expectPatchOk(
+      await runPatch({
+        store: mainStoreEntry({ markedUnreadAt: 40 }),
+        patch: { key: MAIN_SESSION_KEY, unread: false, pinned: true },
+      }),
+    );
+    expect(mixed.updatedAt).toBeGreaterThan(1);
+  });
+
   test("stores sanitized agent status with attention and a bounded TTL", async () => {
     const before = Date.now();
     const entry = expectPatchOk(

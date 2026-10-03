@@ -83,6 +83,7 @@ import {
 } from "../sessions/session-agent-status.js";
 import { isUserModelAuthProfileId } from "../state/user-model-account-id.js";
 import type { UserModelAccountSelection } from "./model-account-authority.js";
+import { isSessionUnreadAckOnlyPatch } from "./server-methods/session-unread-ack.js";
 import { resolveSessionPatchModelSelection } from "./server-methods/sessions-patch-model-selection.js";
 import { applySessionExecutionSettings } from "./session-execution-settings.js";
 import {
@@ -279,13 +280,17 @@ function* projectSessionPatchSteps(
 
   const existing =
     params.existingEntry && projectCanonicalSessionEntryShape({ ...params.existingEntry });
+  // A read acknowledgement changes the badge, not the session's recency.
+  const nextUpdatedAt = isSessionUnreadAckOnlyPatch(patch)
+    ? (existing?.updatedAt ?? now)
+    : Math.max(existing?.updatedAt ?? 0, now);
   // Existing entries without session ids are placeholder aliases; assigning an id makes them real.
   const next: SessionEntry = {
     ...existing,
     sessionId: existing?.sessionId || randomUUID(),
     // Reset retains sessionId, so rollback also needs the original lifecycle revision.
     ...(existing?.sessionId ? {} : { lifecycleRevision: randomUUID() }),
-    updatedAt: Math.max(existing?.updatedAt ?? 0, now),
+    updatedAt: nextUpdatedAt,
     ...(params.preparedSessionRoot ? { sessionRoot: params.preparedSessionRoot } : {}),
     // Stamp only genuinely new rows; existing placeholder aliases must not be restamped.
     ...(creation && params.existingEntry === undefined ? buildSessionCreationStamp(creation) : {}),

@@ -128,7 +128,9 @@ describe("sidebar session sort preference", () => {
     expect(loadStoredSidebarSessionSortMode()).toBe("created");
   });
 
-  it("round-trips updated and people modes", () => {
+  it("round-trips oldest, updated, and people modes", () => {
+    expect(storeSidebarSessionSortMode("oldest", undefined)).toBe("oldest");
+    expect(loadStoredSidebarSessionSortMode()).toBe("oldest");
     expect(storeSidebarSessionSortMode("updated", undefined)).toBe("updated");
     expect(loadStoredSidebarSessionSortMode()).toBe("updated");
     expect(storeSidebarSessionSortMode("people", true)).toBe("people");

@@ -3834,6 +3834,7 @@ export const en: TranslationMap & {
       openSessionMenu: "Open session menu",
       sortBy: "Sort by",
       sortCreated: "Created",
+      sortOldest: "Oldest first (steady list)",
       sortSessions: "Filter & sort",
       sessionSources: "Session sources…",
       showOnlyPerson: "Show only {name}",

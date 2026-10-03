@@ -257,7 +257,7 @@ export type SidebarSessionGroupMenuState = {
   y: number;
 };
 
-export type SidebarSessionSortMode = "created" | "updated" | "people";
+export type SidebarSessionSortMode = "created" | "oldest" | "updated" | "people";
 export type SidebarSessionStatusFilter = "active" | "archived" | "all";
 export type SidebarEmptyGroupsMode = "filtering" | "always" | "never";
 export type SidebarSessionOwnerFilter = {
@@ -398,7 +398,7 @@ export function loadStoredSidebarSessionSortMode(): SidebarSessionSortMode {
   const stored = getSafeLocalStorage()?.getItem(SIDEBAR_SESSION_SORT_MODE_STORAGE_KEY);
   // "people" stays readable here even when the gateway later hides the
   // capability; effectiveSessionSortMode() downgrades it at render time.
-  return stored === "updated" || stored === "people" ? stored : "created";
+  return stored === "oldest" || stored === "updated" || stored === "people" ? stored : "created";
 }
 
 export function loadStoredCollapsedSessionSections(): ReadonlySet<string> {
@@ -537,11 +537,16 @@ export function setStoredSessionCatalogHidden(catalogId: string, hidden: boolean
 
 export const SIDEBAR_SESSION_SORT_OPTIONS = [
   { mode: "created", labelKey: "chat.sidebar.sortCreated" },
+  { mode: "oldest", labelKey: "chat.sidebar.sortOldest" },
   { mode: "updated", labelKey: "chat.sidebar.sortUpdated" },
   { mode: "people", labelKey: "sessionsView.owners" },
 ] as const satisfies ReadonlyArray<{
   mode: SidebarSessionSortMode;
-  labelKey: "chat.sidebar.sortCreated" | "chat.sidebar.sortUpdated" | "sessionsView.owners";
+  labelKey:
+    | "chat.sidebar.sortCreated"
+    | "chat.sidebar.sortOldest"
+    | "chat.sidebar.sortUpdated"
+    | "sessionsView.owners";
 }>;
 
 export const SIDEBAR_SESSION_STATUS_OPTIONS = [

@@ -57,7 +57,7 @@ function projectDraftOwnership(
 
 function sortSidebarRows(
   rows: GatewaySessionRow[],
-  sortMode: "created" | "updated" | "people",
+  sortMode: "created" | "oldest" | "updated" | "people",
   createdOrder: ReadonlyMap<string, number>,
   owners?: SessionsListResult["owners"],
 ) {
@@ -117,6 +117,22 @@ describe("sidebar session sort modes", () => {
       "equal-later",
       "missing-earlier",
       "missing-later",
+    ]);
+  });
+
+  it("keeps existing rows in place when a session is read and a new session arrives", () => {
+    const previous = [row("middle", 200, 200), row("old", 100, 100)];
+    const observed = new Map(previous.map((entry, index) => [entry.key, index]));
+    expect(sortSidebarRows(previous, "oldest", observed).map((entry) => entry.key)).toEqual([
+      "old",
+      "middle",
+    ]);
+
+    const refreshed = [row("new", 300, 300), row("old", 100, 500), row("middle", 200, 200)];
+    expect(sortSidebarRows(refreshed, "oldest", observed).map((entry) => entry.key)).toEqual([
+      "old",
+      "middle",
+      "new",
     ]);
   });
 

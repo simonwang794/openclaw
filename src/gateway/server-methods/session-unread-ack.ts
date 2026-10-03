@@ -29,6 +29,11 @@ function hasOtherMutation(patch: { unread?: boolean }): boolean {
   );
 }
 
+/** Reading a session does not count as new session activity. */
+export function isSessionUnreadAckOnlyPatch(patch: { unread?: boolean }): boolean {
+  return patch.unread === false && !hasOtherMutation(patch);
+}
+
 export function validateSessionUnreadAck(
   patch: { unread?: boolean },
   target: Pick<SessionPatchTargetIdentity, "expectedMarkedUnreadAt">,
@@ -36,7 +41,7 @@ export function validateSessionUnreadAck(
   if (target.expectedMarkedUnreadAt === undefined) {
     return undefined;
   }
-  if (patch.unread === false && !hasOtherMutation(patch)) {
+  if (isSessionUnreadAckOnlyPatch(patch)) {
     return undefined;
   }
   return "expectedMarkedUnreadAt requires unread=false as the only mutation.";
@@ -47,7 +52,7 @@ export function resolveSessionUnreadAck(
   patch: Pick<SessionsPatchParams, "expectedMarkedUnreadAt" | "unread">,
 ): { kind: "apply" | "missing" } | { kind: "stale"; entry: SessionEntry } {
   const { expectedMarkedUnreadAt } = patch;
-  if (patch.unread !== false || hasOtherMutation(patch) || expectedMarkedUnreadAt === undefined) {
+  if (!isSessionUnreadAckOnlyPatch(patch) || expectedMarkedUnreadAt === undefined) {
     return { kind: "apply" };
   }
   if (!entry) {

@@ -67,7 +67,12 @@ export function createSidebarSessionRowsComparator(
     if (input.sortMode !== "people") {
       return input.sortMode === "updated"
         ? compareSessionRowsByUpdatedAt(a, b)
-        : compareSidebarSessionRowsByCreatedAt(a, b, input.createdOrder);
+        : compareSidebarSessionRowsByCreatedAt(
+            a,
+            b,
+            input.createdOrder,
+            input.sortMode === "oldest",
+          );
     }
     const ownerA = a.owner?.actor;
     const ownerB = b.owner?.actor;
@@ -97,6 +102,7 @@ function compareSidebarSessionRowsByCreatedAt(
   a: SessionRow,
   b: SessionRow,
   createdOrder: ReadonlyMap<string, number>,
+  oldestFirst = false,
 ): number {
   const createdAtA =
     typeof a.createdAt === "number" && Number.isFinite(a.createdAt) && a.createdAt >= 0
@@ -113,7 +119,7 @@ function compareSidebarSessionRowsByCreatedAt(
     if (createdAtB === null) {
       return -1;
     }
-    const byCreatedAt = createdAtB - createdAtA;
+    const byCreatedAt = oldestFirst ? createdAtA - createdAtB : createdAtB - createdAtA;
     if (byCreatedAt !== 0) {
       return byCreatedAt;
     }
