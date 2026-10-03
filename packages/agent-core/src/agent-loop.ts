@@ -245,6 +245,7 @@ async function runLoop(
 
       // Stream assistant response
       let streamedSteering: AgentMessage[] = [];
+      const toolPlan = { executionStarted: false };
       const streamedConfig: AgentLoopConfig = {
         ...config,
         getSteeringMessages: async () => {
@@ -268,6 +269,7 @@ async function runLoop(
             executionSignal,
             toolEmit,
             toolLoopRecoveryState.criticalToolLoopSeen,
+            toolPlan,
             toolCalls,
             scheduling,
             scheduling.hasUnobservedAsyncToolResults,
@@ -301,6 +303,7 @@ async function runLoop(
               signal,
               emit,
               toolLoopRecoveryState.criticalToolLoopSeen,
+              toolPlan,
               remainingToolCalls,
               undefined,
               streamed.executedIds.size > 0,
@@ -455,6 +458,7 @@ async function executeToolCalls(
   signal: AbortSignal | undefined,
   emit: AgentEventSink,
   criticalToolLoopSeen: boolean,
+  toolPlan: { executionStarted: boolean },
   toolCalls = assistantMessage.content.filter((c) => c.type === "toolCall"),
   scheduling?: AsyncToolBatchScheduling,
   hasUnobservedAsyncToolResults = false,
@@ -469,6 +473,7 @@ async function executeToolCalls(
     validated: new Map(),
     onParallelStarted: scheduling?.onParallelStarted,
     hasUnobservedAsyncToolResults,
+    toolPlan,
   };
   if (config.beforeToolBatch) {
     for (const toolCall of toolCalls) {
@@ -534,6 +539,7 @@ type ToolBatchContext = {
   warnings?: ToolLoopWarning[];
   onParallelStarted?: () => void;
   hasUnobservedAsyncToolResults: boolean;
+  toolPlan: { executionStarted: boolean };
 };
 
 type ResolvedToolCallOutcome =
@@ -571,7 +577,7 @@ async function executeToolCallGroups(
   let fatal: ExecutedToolCallBatch["fatal"];
 
   while (cursor < toolCalls.length) {
-    if (sequential && !batch.signal?.aborted) {
+    if (sequential && batch.toolPlan.executionStarted && !batch.signal?.aborted) {
       const steering = getSteeringAtCheckpoint(batch.config);
       steeringMessages = Array.isArray(steering) ? steering : await steering;
     }
@@ -600,7 +606,12 @@ async function executeToolCallGroups(
       }
 
       const hasReady = entries.some((entry) => "kind" in entry);
-      if (!batch.signal?.aborted && (!sequential || hasReady)) {
+      if (
+        sequential &&
+        batch.toolPlan.executionStarted &&
+        hasReady &&
+        !batch.signal?.aborted
+      ) {
         const steering = getSteeringAtCheckpoint(batch.config);
         steeringMessages = Array.isArray(steering) ? steering : await steering;
       }
@@ -632,7 +643,7 @@ async function executeToolCallGroups(
       const launched =
         steeringMessages.length > 0 || (sequential && !hasReady)
           ? undefined
-          : await launchParallelToolCalls(entries, batch.lifecycle);
+          : await launchParallelToolCalls(entries, batch.lifecycle, batch.toolPlan);
       // Streamed batches serialize admission until source execution begins.
       // Parallel bodies may overlap; exclusive tools retain the gate until finalization.
       if (!sequential && launched?.started.length && !launched.rejected) {
@@ -704,9 +715,8 @@ async function executeToolCallGroups(
     }
   }
 
-  // Steering accepted during the last sequential call must outrank the stop hook,
-  // even when there is no unstarted tail. Parallel batches retain their single poll.
-  if (sequential && !fatal && !batch.signal?.aborted && steeringMessages.length === 0) {
+  // Steering accepted while tools ran must outrank the stop hook in either mode.
+  if (!fatal && !batch.signal?.aborted && steeringMessages.length === 0) {
     const steering = getSteeringAtCheckpoint(batch.config);
     steeringMessages = Array.isArray(steering) ? steering : await steering;
     if (steeringMessages.length > 0) {
@@ -846,6 +856,7 @@ async function prepareToolCallEntry(
 async function launchParallelToolCalls(
   entries: FinalizedToolCallEntry[],
   batchLifecycle: InternalToolBatchLifecycle | undefined,
+  toolPlan: { executionStarted: boolean },
 ): Promise<ParallelToolCallLaunches> {
   const ready = entries.flatMap((entry, index) => ("kind" in entry ? [{ entry, index }] : []));
   const result: ParallelToolCallLaunches = { started: [], completed: [] };
@@ -881,6 +892,7 @@ async function launchParallelToolCalls(
         throw error;
       }
       started = true;
+      toolPlan.executionStarted = true;
       if (launchState.outcome) {
         result.started.push({ ...current, outcome: launchState.outcome });
       }

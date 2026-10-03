@@ -14,16 +14,16 @@ This page covers queue-mode steering for normal inbound messages in `steer` mode
 
 ## Runtime boundary
 
-Steering does not interrupt a tool call that is already running. The OpenClaw runtime checks at tool-launch boundaries as well as model boundaries:
+Steering does not interrupt a tool call that is already running. The OpenClaw runtime treats the assistant's requested tool plan as committed until its first executable call starts, then checks at safe tool and model boundaries:
 
 1. The assistant asks for tool calls.
-2. In sequential mode, OpenClaw checks immediately before each call starts, including after asynchronous resolution, validation, and pre-execution hooks.
-3. A running call finishes. If a steer is waiting afterward, the unstarted sequential tail is skipped.
-4. In parallel mode, OpenClaw prepares calls first, then checks once immediately before launching the prepared calls. Calls that have crossed that checkpoint continue together.
+2. In sequential mode, after a call has started, OpenClaw checks before each later call, including after asynchronous resolution, validation, and pre-execution hooks.
+3. The first requested executable call starts even if a steer arrives during preparation. After it starts, a running call finishes; if a steer is waiting afterward, the unstarted sequential tail is skipped.
+4. In parallel mode, OpenClaw prepares and launches the requested batch; calls that have started continue together, then OpenClaw checks steering after the batch settles.
 5. Every skipped call receives paired tool start/end events and a synthetic result (`Skipped to process an incoming message.`), in assistant source order. The result tells the model that the tool did not run, and the Control UI labels it **Skipped**.
-6. OpenClaw appends the exact drained steering message before the next LLM call.
+6. OpenClaw appends the exact drained steering message after settled tool results and before stop hooks or the next LLM call.
 
-This keeps every requested tool call paired with a result while ensuring accepted steering is model-visible before any later tool can start.
+This keeps every requested tool call paired with a result while ensuring accepted steering is model-visible at the next safe checkpoint. Parallel batches finish once launched; steering does not skip calls in that batch.
 
 Internal updates, including subagent completion reports, also use this steering boundary. These updates can be hidden from the chat transcript and do not appear in the user message queue. A skipped tool therefore does not necessarily mean a user message is waiting; the agent processes the incoming update before deciding which tools to call next.
 
@@ -38,8 +38,8 @@ Codex review and manual compaction turns reject same-turn steering. When a runti
 OpenClaw distinguishes started work from requested work:
 
 - A sequential call that is already running completes. Later calls have not started, so OpenClaw returns synthetic skipped results for them and lets the model reconsider with the steer visible.
-- A parallel batch has one atomic launch checkpoint. A steer present before it suppresses all prepared calls; a steer arriving after it does not recall any of them.
-- Validation or policy outcomes finalized before the parallel checkpoint remain truthful. Only executable calls that did not start receive the steering skip result.
+- The first parallel batch launches and finishes before steering is applied; subsequent steering is checked after the batch settles and before stop hooks.
+- Validation or policy outcomes finalized before launch remain truthful. Only executable sequential tail calls that did not start receive the steering skip result.
 - The transcript stays append-only and structurally paired: assistant tool calls, real or synthetic tool results, then the steering user message.
 
 Stopping already-running work is a different intent from redirecting future work. Use `/queue interrupt` (or `/stop`) when the newest message should abort the active run instead of steering it.
@@ -97,7 +97,7 @@ the active run to avoid replaying input whose consumption is uncertain.
 
 ## Debounce
 
-The built-in queue debounce applies to queued `followup` and `collect` delivery. In `steer` mode with the native Codex harness, it also sets the quiet window before sending batched `turn/steer`. OpenClaw active steering does not use the debounce timer; at tool-launch and model boundaries it drains FIFO according to the runtime's configured steering drain mode.
+The built-in queue debounce applies to queued `followup` and `collect` delivery. In `steer` mode with the native Codex harness, it also sets the quiet window before sending batched `turn/steer`. OpenClaw active steering does not use the debounce timer; at safe tool and model boundaries it drains FIFO according to the runtime's configured steering drain mode.
 
 ## Related
 

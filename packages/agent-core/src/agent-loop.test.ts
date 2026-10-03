@@ -1377,16 +1377,18 @@ describe("agentLoop tool termination", () => {
     releasePreflight.resolve();
     await run;
 
-    expect(execute).not.toHaveBeenCalled();
-    expect(commitReadyCalls).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledOnce();
+    expect(commitReadyCalls).toHaveBeenCalledExactlyOnceWith([
+      { toolCallId: "delayed-call", args: { rewritten: true } },
+    ]);
     expect(dispose).toHaveBeenCalledOnce();
     expect(requestMessages[1]?.slice(-3)).toMatchObject([
       { role: "assistant", stopReason: "toolUse" },
       {
         role: "toolResult",
         toolCallId: "delayed-call",
-        isError: true,
-        details: { status: "skipped", deniedReason: "steering" },
+        isError: false,
+        details: { executed: true },
       },
       steer,
     ]);
@@ -1394,7 +1396,7 @@ describe("agentLoop tool termination", () => {
       expect.objectContaining({
         toolCall: expect.objectContaining({ id: "delayed-call" }),
         args: { rewritten: true },
-        executionStarted: false,
+        executionStarted: true,
       }),
       expect.any(AbortSignal),
     );
@@ -1765,7 +1767,7 @@ describe("agentLoop tool termination", () => {
     expect(releaseSkippedCalls).toHaveBeenCalledExactlyOnceWith(["valid-tail"]);
   });
 
-  it("checks steering once before launching a prepared parallel batch", async () => {
+  it("lets the first requested parallel batch finish when steering arrives during preparation", async () => {
     const preparationReleased = createDeferred();
     const preparationBlocked = createDeferred();
     const execute = vi.fn(async () => ({ content: [], details: {} }));
@@ -1822,18 +1824,19 @@ describe("agentLoop tool termination", () => {
     preparationReleased.resolve();
     await run;
 
-    expect(execute).not.toHaveBeenCalled();
-    expect(commitReadyCalls).not.toHaveBeenCalled();
-    expect(releaseSkippedCalls).toHaveBeenCalledExactlyOnceWith(["prepared"]);
+    expect(execute).toHaveBeenCalledOnce();
+    expect(commitReadyCalls).toHaveBeenCalledExactlyOnceWith([
+      { toolCallId: "prepared", args: {} },
+    ]);
+    expect(releaseSkippedCalls).not.toHaveBeenCalled();
     expect(requestMessages[1]?.slice(-4)).toMatchObject([
       { role: "assistant", stopReason: "toolUse" },
       { role: "toolResult", toolCallId: "invalid", isError: true },
       {
         role: "toolResult",
         toolCallId: "prepared",
-        isError: true,
-        content: [{ type: "text", text: "Skipped to process an incoming message." }],
-        details: { status: "skipped", deniedReason: "steering" },
+        isError: false,
+        details: {},
       },
       steer,
     ]);

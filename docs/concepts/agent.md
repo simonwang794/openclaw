@@ -106,10 +106,11 @@ OpenClaw. OpenClaw does not read session folders from other tools.
 ## Steering while streaming
 
 Inbound prompts that arrive mid-run are steered into the current run by default.
-The OpenClaw runtime checks for steering before unstarted tool launches and the
-next model call. A running tool continues. Unstarted sequential calls are skipped,
-while parallel calls continue after their batch crosses its launch checkpoint.
-Skipped calls receive synthetic paired results before the model sees the steer.
+The OpenClaw runtime lets the first requested executable tool start before
+applying steering, then checks at safe tool and model boundaries. A running
+tool continues. After it finishes, a waiting steer can skip the unstarted
+sequential tail; parallel batches finish once launched. Skipped calls receive
+synthetic paired results before the model sees the steer.
 
 `/queue steer` is the default active-run behavior. `/queue followup` and
 `/queue collect` make messages wait for a later turn instead of steering.
