@@ -371,7 +371,7 @@ export async function deliverCompletionDirect(params: {
               ? { accountId: params.deliveryTarget.accountId }
               : {}),
             ...(params.deliveryTarget.threadId != null
-              ? { threadId: String(params.deliveryTarget.threadId) }
+              ? { threadId: params.deliveryTarget.threadId }
               : {}),
             messageId,
             ...(result.target?.id ? { providerTargetId: result.target.id } : {}),
@@ -424,7 +424,7 @@ export async function deliverCompletionDirect(params: {
         to: params.deliveryTarget.to!,
         ...(params.deliveryTarget.accountId ? { accountId: params.deliveryTarget.accountId } : {}),
         ...(params.deliveryTarget.threadId != null
-          ? { threadId: String(params.deliveryTarget.threadId) }
+          ? { threadId: params.deliveryTarget.threadId }
           : {}),
         messageId,
         ...(sendResult.result && "target" in sendResult.result && sendResult.result.target?.id

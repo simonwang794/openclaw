@@ -243,7 +243,7 @@ export function hasConfirmedSubagentReturnDelivery(entry: SubagentRunRecord): bo
     receipt.channel === route.channel &&
     receipt.to === route.to &&
     receipt.accountId === route.accountId &&
-    String(receipt.threadId ?? "") === String(route.threadId ?? "") &&
+    (receipt.threadId ?? "") === String(route.threadId ?? "") &&
     receipt.messageId.trim() &&
     !["ok", "unknown", "skipped", "suppressed"].includes(receipt.messageId.trim().toLowerCase()) &&
     entry.delivery?.verification?.readback === "passed",
