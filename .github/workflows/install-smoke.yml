@@ -26,6 +26,30 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
+  sidebar_package:
+    if: github.repository == 'simonwang794/openclaw' && github.event_name == 'workflow_dispatch' && github.ref_name == 'sidebar-unread-v2026.9.6-20261003'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-env
+        with:
+          node-version: '24.19.0'
+          install-bun: 'false'
+          cache-mode: restore
+      - name: Build self-contained sidebar fix package
+        run: node scripts/package-openclaw-for-docker.mjs --allow-unreleased-changelog --output-dir .artifacts/sidebar-package
+      - name: Record checksums
+        run: cd .artifacts/sidebar-package && sha256sum ./*.tgz > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: sidebar-fix-package-${{ github.sha }}
+          path: .artifacts/sidebar-package/
+          if-no-files-found: error
+          retention-days: 3
+
   install_smoke:
     if: github.repository == 'openclaw/openclaw'
     permissions:
